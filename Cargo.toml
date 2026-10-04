@@ -3,4 +3,17 @@ name = "cli-todo"
 version = "0.1.0"
 edition = "2024"
 
+[lib]
+name="cli_todo"
+path="src/lib.rs"
+
+
+[profile.dev]
+debug = "line-tables-only"
+
 [dependencies]
+anyhow = "1.0.104"
+clap = { version = "4.6.7", features = ["cargo", "derive"] }
+rusqlite = "0.40.2"
+tabled = "0.22.0"
+time = "0.3.55"
