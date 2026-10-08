@@ -140,6 +140,7 @@ dependencies = [
  "clap",
  "rusqlite",
  "tabled",
+ "thiserror",
  "time",
 ]
 

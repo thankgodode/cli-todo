@@ -1,9 +1,36 @@
-use std::{path::PathBuf, time::Instant};
+use std::{io, path::PathBuf, time::Instant};
 use clap::{Parser, Subcommand,Command};
-use rusqlite::{Connection, Result, params};
+use rusqlite::{Connection, ErrorCode, Result, params};
 use tabled::{Table, Tabled, assert::assert_table, grid::records::vec_records::Cell, settings::{Alignment, Style, Width, object::{Columns, Rows}, split::{self, Split}}};
+use thiserror::Error;
 use time::UtcDateTime;
 use std::io::Write;
+
+#[derive(Error, Debug)]
+pub enum TodoError {
+    #[error("failed to connect to database")]
+    FailedToConnectDB,
+    #[error("Id not found {0}")]
+    NotFound(i32),
+    #[error("Invalid id provided {0}")]
+    InvalidId(i32),
+    #[error("Unexpected error occurred")]
+    UnExpectedError,
+    #[error("Failed to add todos")]
+    FailedToCreateTodos
+}
+
+impl From<rusqlite::Error> for TodoError{
+    fn from(value: rusqlite::Error) -> Self {
+        match value{
+            rusqlite::Error::SqliteFailure(_,_)=> TodoError::FailedToConnectDB,
+            rusqlite::Error::QueryReturnedNoRows => TodoError::FailedToConnectDB,
+            _ =>{
+                TodoError::FailedToCreateTodos
+            }
+        }
+    }
+}
 
 #[derive(Debug)]
 pub struct TodoDb{
@@ -12,24 +39,46 @@ pub struct TodoDb{
 }
 
 impl TodoDb{
-    pub fn new() -> Self{
-        let connection = open_db().expect("Failed to open database");
-        Self { tasks: vec![], connection }
+    pub fn new() -> Result<Self,TodoError>{
+        let connection = open_db()?;
+        Ok(Self { tasks: vec![], connection })
     }
 
-    pub fn add(&self, tasks: TodoItem)->Result<()>{
-        self.connection.execute(
+    pub fn add(&self, tasks: TodoItem)->Result<(),TodoError>{
+        let check = self.connection.execute(
             "INSERT INTO todo (task, created_at, status) VALUES (?1, ?2, ?3)",
             (&tasks.task, &tasks.created_at, &tasks.status),
-        )?;
-        
-        Ok(())
+        );
+
+        match check{
+            Ok(1)=>{
+                println!("Successfully added task!");
+                Ok(())
+            },
+            Ok(0)=>{
+                Err(TodoError::FailedToCreateTodos)
+            },
+            _ =>{
+                Err(TodoError::UnExpectedError)
+            }
+        }
     }
 
-    pub fn done(&self, id: i32)->Result<()>{
-        self.connection.execute("UPDATE todo SET status = 1 WHERE id = ?", [id])?;
+    pub fn done(&self, id: i32)->Result<(),TodoError>{
+        let check = self.connection.execute("UPDATE todo SET status = 1 WHERE id = ?", [id]);
 
-        Ok(())
+        match check{
+            Ok(1)=>{
+                println!("Successfully marked task #{} as done!", id);
+                Ok(())
+            },
+            Ok(0) =>{
+                Err(TodoError::InvalidId(id))
+            },
+            _=>{
+                Err(TodoError::UnExpectedError)
+            }
+        }
     }
 
     pub fn list(&self) -> Result<()>{
@@ -60,29 +109,59 @@ impl TodoDb{
         Ok(())
     }
 
-    pub fn delete(&self, id:i32) -> Result<()>{
-        self.connection.execute("DELETE FROM todo WHERE id=?", [id])?;
+    pub fn delete(&self, id:i32) -> Result<(),TodoError>{
+        let check = self.connection.execute("DELETE FROM todo WHERE id=?", [id]);
 
-        println!("Successfully deleted todos #{}",id);
-
-        Ok(())
+        match check{
+            Ok(1)=>{
+                println!("Successfully deleted todos #{}",id);
+                Ok(())
+            },
+            Ok(0) =>{
+                Err(TodoError::NotFound(id))
+            },
+            _=>{
+                Err(TodoError::UnExpectedError)
+            }
+        }
     }
 
-    pub fn edit(&self, id:i32, task: String)-> Result<()>{
+    pub fn edit(&self, id:i32, task: String)-> Result<(),TodoError>{
         if task.len()<1{
-            println!("Current task: {}", self.connection.query_row("SELECT task FROM todo WHERE id=?", [id], |row| row.get::<_,String>(0)).unwrap());
+            println!("Current task: {}", self.connection.query_row("SELECT task FROM todo WHERE id=?", [id], |row| row.get::<_,String>(0))?);
             let task = readline().unwrap();
 
-            self.connection.execute("UPDATE todo SET task=?1 WHERE id =?2", params![task, id])?;
+            let check = self.connection.execute("UPDATE todo SET task=?1 WHERE id =?2", params![task, id]);
 
-            println!("Task ${} updated", id);
-            return Ok(());
+            match check{
+                Ok(1)=>{
+                    println!("Task #{} updated", id);
+                    return Ok(())
+                },
+                Ok(0) =>{
+                    return Err(TodoError::NotFound(id))
+                },
+                _=>{
+                    return Err(TodoError::UnExpectedError)
+                }
+            }            
         }
         
-        self.connection.execute("UPDATE todo SET task=?1 WHERE id =?2", params![task, id])?;
+        let check = self.connection.execute("UPDATE todo SET task=?1 WHERE id =?2", params![task, id]);
 
-        println!("Task #{} updated", id);
-        Ok(())
+        match check{
+            Ok(1)=>{
+                println!("Task #{} updated", id);
+                Ok(())
+            },
+            Ok(0) =>{
+                Err(TodoError::NotFound(id))
+            },
+            _=>{
+                Err(TodoError::UnExpectedError)
+            }
+        }   
+
     }
 
     pub fn show(&self, id: i32)-> Result<()>{
@@ -98,10 +177,7 @@ impl TodoDb{
             f.unwrap()
         }).collect();
 
-        if todo_iter.len()<1{
-            println!("Todo does not exists");
-            return Ok(())
-        }
+
         let mut table = Table::new(todo_iter);
 
         table.modify(Rows::new(1..), Width::wrap(40).keep_words(true));
@@ -138,9 +214,11 @@ pub struct ListTodo{
     status: bool
 }
 
-fn open_db()-> Result<Connection> {
-    let conn = Connection::open("todo.db")?;
+fn open_db()-> Result<Connection, TodoError> {
+    let db_path = "/this/path/does/not/exist/app.db";
 
+    let conn = Connection::open("todo.db")?;
+    
     conn.execute(
         "
         CREATE TABLE IF NOT EXISTS todo (
@@ -151,7 +229,7 @@ fn open_db()-> Result<Connection> {
         )
         ", ()
     )?;
-
+    
     Ok(conn)
 }
 

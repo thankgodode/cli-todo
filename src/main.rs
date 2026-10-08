@@ -1,7 +1,7 @@
 use std::{path::PathBuf, time::Instant};
 
 use clap::{Command, Parser, Subcommand, builder::styling};
-use cli_todo::{TodoDb, TodoItem, delete_db};
+use cli_todo::{TodoDb, TodoError, TodoItem, delete_db};
 use time::UtcDateTime;
 
 #[derive(Parser)]
@@ -52,8 +52,8 @@ enum Commands{
     Edit{
         id: i32,
         
-        #[arg(default_value_t = "".to_string())]
-        task: String,
+            #[arg(num_args = 1..)]
+        task: Vec<String>
         
     },
 
@@ -73,20 +73,20 @@ const STYLES: styling::Styles = styling::Styles::styled()
     .placeholder(styling::AnsiColor::Cyan.on_default());
 
 
-fn main() {
+fn main() -> Result<(),TodoError>{
     let cli = Cli::parse();
-    let db= TodoDb::new();
+    let db= TodoDb::new()?;
 
     match cli.command{
         Some(Commands::Add { todo }) => {
             let task = TodoItem::new(todo.join(" ").to_string(), UtcDateTime::now().date().to_string(), false);
 
-            db.add(task).expect("Failed to insert");
+            db.add(task)?;
 
         },
 
         Some(Commands::Done { id })=>{
-            db.done(id as i32).expect("Failed to update");
+            db.done(id as i32)?
         },
 
         Some(Commands::List) =>{
@@ -98,15 +98,16 @@ fn main() {
         },
 
         Some(Commands::Delete { id })=>{
-            db.delete(id).expect("Failed to delete todo");
+            db.delete(id)?
         },
 
         Some(Commands::Edit { id, task })=>{
-            db.edit(id, task).expect("Failed");
+            let task = task.join(" ").to_string();
+            db.edit(id, task)?
         },
 
         Some(Commands::Show { id })=>{
-            db.show(id).expect("Faield to show");
+            db.show(id)?
         }
 
         _=>{
@@ -115,5 +116,6 @@ fn main() {
     }
     
 
+    Ok(())
     // println!("All todos: {:?}", db);
 }
