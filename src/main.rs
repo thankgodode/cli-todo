@@ -52,7 +52,7 @@ enum Commands{
     Edit{
         id: i32,
         
-            #[arg(num_args = 1..)]
+        #[arg(num_args = 1..)]
         task: Vec<String>
         
     },
@@ -79,6 +79,9 @@ fn main() -> Result<(),TodoError>{
 
     match cli.command{
         Some(Commands::Add { todo }) => {
+            if todo.len() <1{
+                return Err(TodoError::InvalidTask)
+            }
             let task = TodoItem::new(todo.join(" ").to_string(), UtcDateTime::now().date().to_string(), false);
 
             db.add(task)?;

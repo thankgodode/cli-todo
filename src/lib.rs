@@ -17,7 +17,9 @@ pub enum TodoError {
     #[error("Unexpected error occurred")]
     UnExpectedError,
     #[error("Failed to add todos")]
-    FailedToCreateTodos
+    FailedToCreateTodos,
+    #[error("Task field cannot be blank")]
+    InvalidTask
 }
 
 impl From<rusqlite::Error> for TodoError{
@@ -45,6 +47,7 @@ impl TodoDb{
     }
 
     pub fn add(&self, tasks: TodoItem)->Result<(),TodoError>{
+        
         let check = self.connection.execute(
             "INSERT INTO todo (task, created_at, status) VALUES (?1, ?2, ?3)",
             (&tasks.task, &tasks.created_at, &tasks.status),
