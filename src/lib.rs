@@ -10,9 +10,9 @@ use std::io::Write;
 pub enum TodoError {
     #[error("failed to connect to database")]
     FailedToConnectDB,
-    #[error("Id not found {0}")]
+    #[error("Id not found '{0}'")]
     NotFound(i32),
-    #[error("Invalid id provided {0}")]
+    #[error("Invalid id provided '{0}'")]
     InvalidId(i32),
     #[error("Unexpected error occurred")]
     UnExpectedError,
@@ -228,7 +228,6 @@ pub struct ListTodo{
 }
 
 fn open_db()-> Result<Connection, TodoError> {
-
     let conn = Connection::open("todo.db")?;
     
     conn.execute(

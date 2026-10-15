@@ -97,7 +97,14 @@ fn main() -> Result<(),String>{
         },
 
         Some(Commands::Clear) =>{
-            delete_db().expect("Failed to delete database");
+            match delete_db(){
+                Ok(())=>{
+                    println!("Successfully cleared all tasks!");
+                },
+                Err(e)=>{
+                    return Err(e.to_string())
+                }
+            }
         },
 
         Some(Commands::Delete { id })=>{
