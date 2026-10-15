@@ -52,7 +52,7 @@ enum Commands{
     Edit{
         id: i32,
         
-            #[arg(num_args = 1..)]
+        #[arg(num_args = 1..)]
         task: Vec<String>
         
     },
@@ -73,12 +73,15 @@ const STYLES: styling::Styles = styling::Styles::styled()
     .placeholder(styling::AnsiColor::Cyan.on_default());
 
 
-fn main() -> Result<(),TodoError>{
+fn main() -> Result<(),String>{
     let cli = Cli::parse();
     let db= TodoDb::new()?;
 
     match cli.command{
         Some(Commands::Add { todo }) => {
+            if todo.len() <1{
+                return Err(TodoError::InvalidTask.to_string())
+            }
             let task = TodoItem::new(todo.join(" ").to_string(), UtcDateTime::now().date().to_string(), false);
 
             db.add(task)?;
@@ -94,7 +97,14 @@ fn main() -> Result<(),TodoError>{
         },
 
         Some(Commands::Clear) =>{
-            delete_db().expect("Failed to delete database");
+            match delete_db(){
+                Ok(())=>{
+                    println!("Successfully cleared all tasks!");
+                },
+                Err(e)=>{
+                    return Err(e.to_string())
+                }
+            }
         },
 
         Some(Commands::Delete { id })=>{
@@ -107,7 +117,14 @@ fn main() -> Result<(),TodoError>{
         },
 
         Some(Commands::Show { id })=>{
-            db.show(id)?
+            match db.show(id){
+                Ok(())=>{
+                    return Ok(())
+                },
+                Err(e)=>{
+                    return Err(e.to_string())
+                }
+            }
         }
 
         _=>{
